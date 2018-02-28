@@ -1,0 +1,5 @@
+[server]
+port = 10002
+host = ""
+backlog = 1
+database_location = './database'
