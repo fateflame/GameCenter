@@ -9,7 +9,7 @@ import json
 
 
 class Local:        # 记录本地database的数据
-    def __init__(self, f="database"):
+    def __init__(self, f):
         self.__data_location = f    # location of <account,password, livetime> file
         self.record_list = {}     # <account, [pwd, livetime, isOnline]> map for checking sign-in
 

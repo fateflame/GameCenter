@@ -3,9 +3,10 @@ import socket
 import select
 import data_structure
 import ConfigParser
-import thread
+import json
 import service
 import threading
+import thread
 
 
 class Value:            # 服务器状态数据
@@ -16,37 +17,38 @@ class Value:            # 服务器状态数据
 class Server:
 
     def __init__(self, f='./config'):
+        # 退出标志
+        self.__exit_flag = False
+        # 读取配置文件
         self.config = f
-        self.__load_config()
-
-        self.var = Value()
-        self.service = service.Service(self.__record_location)
-
-        self.ser_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.ser_sock.bind((self.__host, self.__port))
-        # 启动一个线程控制服务器
-        t = threading.Thread(target=self.listen, args=[])
-        try:
-            t.start()
-            self.server_ctrl()
-            # TODO 暂停或关闭t，更新数据后退出
-        except KeyboardInterrupt:
-            self.__close()
-            exit(0)
-
-    def __load_config(self):
         cf = ConfigParser.ConfigParser()
         cf.read(self.config)
 
         self.__port = cf.getint('server', 'port')
         self.__host = cf.get('server', 'host')
         self.__backlog = cf.getint('server', 'backlog')
-        self.__record_location = cf.get('server', 'database_location')
+        self.__database_location = cf.get('server', 'database_location')
+        # 服务器连接管理变量
+        self.var = Value()
+        self.service = service.Service(self.__database_location)
+
+        self.ser_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.ser_sock.bind((self.__host, self.__port))
+
+        self.run()
+
+    def run(self):
+        t = threading.Thread(target=self.listen, args=[])
+        # 启动一个线程控制服务器
+        t.start()
+        self.server_ctrl()
+        t.join()# TODO 阻塞于select时无法顺利退出，待修改
+        self.__close()
 
     def listen(self):
         self.ser_sock.listen(self.__backlog)
 
-        while True:
+        while not self.__exit_flag:
             rset = [self.ser_sock] + self.var.conection.keys()
             wset = []
             xset = []
@@ -70,17 +72,25 @@ class Server:
                         self.var.conection.pop(conn)        # remove close connection
                     elif len(data) > 0:
                         # TODO provide service here
-                        conn.sendall(data)
+                        u = self.var.conection[conn]
+                        self.service.service_program(u, data)
                     nready -= 1
                     if nready <= 0:
                         break
 
     def __close(self):
-        for conn in self.var.conection.keys():
-            #self.var.conection[conn].close()
+        for conn, user in enumerate(self.var.conection):
+            # 主动退出所有账号，并记录数据
+            self.service.local_var.record_list[user.user_account][1] += user.log_out()
+            self.service.local_var.record_list[user.user_account][2] = False
             # 关闭所有连接
             conn.close()
         self.ser_sock.close()
+        try:
+            f = open(self.__database_location, 'w')
+            json.dump(obj=self.service.local_var.record_list, fp=f)
+        except:
+            raise
         exit(0)
 
     def server_ctrl(self):
@@ -89,6 +99,7 @@ class Server:
             if cmd == 'exit':
                 c = raw_input('Are you sure to exit server program?\nPress "y" to continue, else to return\n')
                 if c == 'y':
+                    self.__exit_flag = True
                     return
             else:
                 print("Invalid cmd, return")

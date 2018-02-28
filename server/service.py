@@ -1,9 +1,13 @@
 # -*- coding:utf-8 -*-
-import data_structure
 '''
 针对服务器端本地存储的数据的写局限于此类中
-'''
 
+可用命令：
+signin/login 登录
+signup 注册
+signout/logout 登出
+'''
+import data_structure
 
 class Service:
     cmd_dict = {'$signin': 1,
@@ -13,10 +17,10 @@ class Service:
     local_var = None
 
     def __init__(self, f):
-        self.local_var = data_structure.Local(f)
+        self.file_location = f
+        self.local_var = data_structure.Local(self.file_location)
 
-    def service_program(self, user):
-        data = user.conn.recv(1024)
+    def service_program(self, user, data):
         # 处理请求
         try:
             cmd = self.__parse_data(data)
@@ -68,7 +72,6 @@ class Service:
         else:
             return "You have already logged in, try to log out first."
 
-
     def __logout(self, user):
         if user.state is 0:
             return "You haven't logged in yet."
@@ -78,5 +81,3 @@ class Service:
             self.local_var.record_list[a][1] += t
             self.local_var.record_list[a][2] = False
             return "logout successful"
-
-

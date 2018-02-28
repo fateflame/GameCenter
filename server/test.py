@@ -3,5 +3,7 @@ import json
 
 f = open("database", 'r')
 d = json.load(f)
-print(d)
 f.close()
+
+for k,v in enumerate(d):
+    print(k,v)
