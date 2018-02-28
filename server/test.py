@@ -1,6 +1,7 @@
+import json
 
 
-m = {1:'a',
-     2:'b'}
-m.pop(1)
-print(m)
+f = open("database", 'r')
+d = json.load(f)
+print(d)
+f.close()

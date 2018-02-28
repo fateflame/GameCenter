@@ -1,0 +1,5 @@
+{
+"user1":["abc", 12.1, false],
+"user2":["abc", 0, false],
+"user3":["abc", 22, false]
+}

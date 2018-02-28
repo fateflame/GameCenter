@@ -3,9 +3,9 @@ import socket
 import select
 import data_structure
 import ConfigParser
-import sys
-import service
 import thread
+import service
+import threading
 
 
 class Value:            # 服务器状态数据
@@ -20,14 +20,16 @@ class Server:
         self.__load_config()
 
         self.var = Value()
-        self.service = service.Service(f)
+        self.service = service.Service(self.__record_location)
 
         self.ser_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.ser_sock.bind((self.__host, self.__port))
         # 启动一个线程控制服务器
-        t = thread.start_new_thread(self.server_ctrl(), [])
+        t = threading.Thread(target=self.listen, args=[])
         try:
-            self.listen()
+            t.start()
+            self.server_ctrl()
+            # TODO 暂停或关闭t，更新数据后退出
         except KeyboardInterrupt:
             self.__close()
             exit(0)
@@ -54,7 +56,7 @@ class Server:
 
             if self.ser_sock in r:      # 监听套接字，新的连接
                 conn, cli_addr = self.ser_sock.accept()
-                self.var.conection[conn] = data_structure.User(conn, cli_addr)
+                self.var.conection[conn] = data_structure.User(conn)
                 self.welcome_program(conn)
                 nready -= 1
                 if nready <= 0:
@@ -67,7 +69,7 @@ class Server:
                         conn.close()
                         self.var.conection.pop(conn)        # remove close connection
                     elif len(data) > 0:
-                        # provide service here
+                        # TODO provide service here
                         conn.sendall(data)
                     nready -= 1
                     if nready <= 0:
@@ -81,20 +83,21 @@ class Server:
         self.ser_sock.close()
         exit(0)
 
-    def server_cmd(self, cmd):
-        if cmd == 'exit':
-            c = input('Are you sure to exit server program?\nPress "y" to continue, else to return')
-            if c == 'y':
-                raise thread.interrupt_main()
-        else:
-            print("Invalid cmd, return")
-
     def server_ctrl(self):
         while True:
-            cmd = input("press cmd to control server")
-            self.server_cmd(cmd)
+            cmd = raw_input("press cmd to control server\n")
+            if cmd == 'exit':
+                c = raw_input('Are you sure to exit server program?\nPress "y" to continue, else to return\n')
+                if c == 'y':
+                    return
+            else:
+                print("Invalid cmd, return")
 
     def welcome_program(self, conn):
         print ('Connected by', conn.getpeername())
         info = "Welcome!\nYou could log in, or sign up a new account"
         conn.sendall(info)
+
+
+if __name__ == "__main__":
+    s = Server()
