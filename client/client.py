@@ -31,4 +31,4 @@ class Client:
 
 if __name__ == "__main__":
     c = Client()
-    c.connect("10.26.29.120", 10008)
+    c.connect("10.26.29.120", 10000)

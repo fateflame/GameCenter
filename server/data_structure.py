@@ -7,6 +7,7 @@
 '''
 import time
 import json
+import random
 
 
 class Local:        # 记录本地database的数据
@@ -17,6 +18,7 @@ class Local:        # 记录本地database的数据
         self.conection = {}  # {sock, User} map to record the state of each connection
         self.logged_users = {}      # {accout, User}
         self.room_list = {'hall': []}  # {roomname, [users]}，其中center表示未进入房间，在广场的用户
+        self.room_question = {}     # {roomname, Question}，仅在答题期间非空，游戏结束后清空
 
         self.__read_data()
 
@@ -31,6 +33,15 @@ class Local:        # 记录本地database的数据
         except:
             print("incorrect data in database, please check")
             raise
+
+
+class Question:
+    def __init__(self):
+        self.nums = [random.randint(1,10) for i in range(4)]
+        self.winner = None
+        self.max = None
+        self.proposed_users = []        # 以第一次提交为准，记录下提交过结果的用户
+        self.right_ans = None           # 记录当前获胜的答案
 
 
 class User:         # 泛指已建立的各个连接，并非已登录的user

@@ -8,7 +8,7 @@ signup 注册
 signout/logout 登出
 '''
 import data_structure
-
+import re
 
 class Service:
     # 未登录命令范围0-10，大厅专用命令范围11-20， 房间内专用命令21-30，登录后通用命令31+
@@ -20,7 +20,9 @@ class Service:
                 '$enter':12,
                 '$lsroom' :13,
 
-                '$exitroom': 21,
+                '$exit': 21,
+                '$lsuser':22,
+                '$21game':23,
 
                 '$logout': 31,
                 '$chatall':32,
@@ -55,25 +57,26 @@ class Service:
                 conn.sendall("You must log in first")
                 return
             elif cmd[0] == 1:
-                msg = self.__login(cmd, user)
+                msg = self.login(cmd, user)
                 conn.sendall(msg)
                 return
             elif cmd[0] == 2:
-                msg = self.__signup(cmd)
+                msg = self.signup(cmd)
                 conn.sendall(msg)
 
         elif user.state >= 1:   # 已登录
+            # 公用命令
             if cmd[0] == 31:
-                msg = self.__logout(user)
+                msg = self.logout(user)
                 return conn.sendall(msg)
             elif cmd[0] == 32:
-                return self.__chatall(conn, cmd)
+                return self.chatall(conn, cmd)
             elif cmd[0] == 33:
-                return self.__chat_in_room(conn, cmd)
+                return self.chat_in_room(conn, cmd)
             elif cmd[0] == 34:
-                return self.__chat_to(conn, cmd)
+                return self.chat_to(conn, cmd)
             elif cmd[0] == 35:
-                return self.__get_room(conn)
+                return self.get_roomname(conn)
 
             elif user.state == 1:     # 在大厅
                 if cmd[0] <= 10:
@@ -85,7 +88,7 @@ class Service:
                 elif cmd[0] == 12:
                     self.enter_room(conn, cmd)
                 elif cmd[0] == 13:
-                    self.__list_room(conn)
+                    self.list_rooms(conn)
             elif user.state == 2:   # 在房间
                 if cmd[0] <= 10:
                     return conn.sendall("You mush log out first.")
@@ -93,12 +96,15 @@ class Service:
                     return conn.sendall("You are in a room ,try to exit room first.")
                 elif cmd[0] == 21:
                     self.exit_room(conn)
-
+                elif cmd[0] == 22:
+                    self.list_users_in_room(conn)
+                elif cmd[0] == 23:
+                    self.game_recv(conn, cmd)
 
     def close_conn(self, conn):
         u = self.local_var.conection[conn]
         if u.state != 0:
-            self.__logout(u)
+            self.logout(u)
         self.local_var.conection.pop(conn)
         conn.close()
 
@@ -112,7 +118,7 @@ class Service:
         cmd[0] = self.cmd_dict[cmd[0]]
         return cmd
 
-    def __login(self, cmd, user):
+    def login(self, cmd, user):
         if len(cmd) < 3:
             return "Wrong arguments numbers"
         account = cmd[1]
@@ -132,7 +138,7 @@ class Service:
         else:
             return "You have already logged in, try to log out first."
 
-    def __logout(self, user):
+    def logout(self, user):
         if user.state is 0:
             return "You haven't logged in yet."
         if user.state is 2:
@@ -146,7 +152,7 @@ class Service:
         self.local_var.logged_users.pop(a)
         return "logout successful"
 
-    def __signup(self, cmd):
+    def signup(self, cmd):
         if len(cmd) < 3:
             return "Wrong arguments numbers"
         a = cmd[1]
@@ -157,7 +163,7 @@ class Service:
             self.local_var.record_list[a] = [p, 0, False]
             return "Signup successfully. You can sign in with it now"
 
-    def __chatall(self, sender_conn, cmd):
+    def chatall(self, sender_conn, cmd):
         # 向除自己外的所有用户发送消息
         if len(cmd) < 2:
             sender_conn.sendall("Wrong arguments number. You need to input massage")
@@ -170,7 +176,7 @@ class Service:
                 user.conn.sendall(msg)
         return
 
-    def __chat_in_room(self, sender_conn, cmd):
+    def chat_in_room(self, sender_conn, cmd):
         if len(cmd) < 2:
             sender_conn.sendall("Wrong arguments number. You need to input massage")
             return
@@ -182,7 +188,7 @@ class Service:
             if user.conn != sender_conn:
                 user.conn.sendall(msg)
 
-    def __chat_to(self, sender_conn, cmd):
+    def chat_to(self, sender_conn, cmd):
         if len(cmd) < 3:
             return sender_conn.sendall("Wrong arguments number. You need to input massage")
         receiver = cmd[1]
@@ -197,15 +203,20 @@ class Service:
         msg = sender + "(private):" + " ".join(cmd)
         self.local_var.logged_users[receiver].conn.sendall(msg)
 
-    def __get_room(self, conn):
+    def get_roomname(self, conn):
         # 回显用户当前所在房间
         msg = "You are in '{}'".format(self.local_var.conection[conn].room)
         conn.sendall(msg)
 
-    def __list_room(self, conn):
+    def list_rooms(self, conn):
         rooms = self.local_var.room_list.keys()
         rooms.remove(self.default_room) # 除去大厅外
         conn.sendall(rooms.__str__())
+
+    def list_users_in_room(self, conn):
+        cur_room = self.local_var.conection[conn].room
+        users = self.local_var.room_list[cur_room]
+        conn.sendall([u.user_account for u in users].__str__())
 
     def create_room(self, sender_conn, cmd):
         # precondition: 用户已登录，且在大厅中
@@ -260,3 +271,70 @@ class Service:
         self.local_var.room_list[self.default_room].append(user)    # 回到大厅
         if len(self.local_var.room_list[room]) == 0 and room != self.default_room:
             self.local_var.room_list.pop(room)  # 房间没人则关闭房间
+
+    def game_recv(self, sender_conn, cmd):
+        if len(cmd) < 2:
+            return sender_conn.sendall("Wrong arguments number. Space is expected between command and expression.")
+
+        user = self.local_var.conection[sender_conn]
+        if not self.local_var.room_question.has_key(user.room):
+            return sender_conn.sendall("The game is over or not started yet, please wait.")
+
+        question = self.local_var.room_question[user.room]
+
+        cmd.pop(0)
+        expr = "".join(cmd)
+        try:
+            ans = eval(expr)
+            p = re.compile("\A[+\-*/()]*(\d)[+\-*/()]*(\d)[+\-*/()]*(\d)[+\-*/()]*(\d)[+\-*/()]*")
+            m = re.match(p, expr)
+            if not m:
+                return sender_conn.sendall("Something wrong with your expression. Please check.")
+            numbers = [int(i) for i in m.groups()]
+            if numbers.sort() != question.nums.sort():
+                return sender_conn.sendall("Numbers are different from that in that question.")
+            # 有效提交
+            question.proposed_users.append(user)
+            if ans == 21:
+                question.right_ans = expr
+                question.max = 21
+                question.winner = user
+                # 立即结束游戏
+                self.__pub_result(user.room)
+            else:
+                if question.max is None or ans > question.max:
+                    question.max = ans
+                    question.winner = user
+                    question.right_ans = expr
+        except SyntaxError:
+            return sender_conn.sendall("Invalid expression, please check")
+
+    def __pub_result(self, room):
+        # 立即结束游戏，在房间内发布获胜者
+        q = self.local_var.room_question[room]
+        if q.winner:
+            for user in self.local_var.room_list[room]:
+                if user == q.winner:
+                    user.conn.sendall("Congratulations! You are the winner")
+                else:
+                    msg = "User {} wins the game with {}={}".format(q.winner.user_account, q.right_ans, q.max)
+                    user.conn.sendall(msg)
+        else:
+            for user in self.local_var.room_list[room]:
+                user.conn.sendall("Sorry, nobody win the game.")
+        self.local_var.room_question.pop(room)
+
+    def pub_result(self):
+        for room in self.local_var.room_question.keys():
+            self.__pub_result(room)
+
+    def send_question(self):
+        for room in self.local_var.room_list.keys():
+            if room == self.default_room:       # 大厅不参与游戏
+                continue
+            self.local_var.room_question[room] = q = data_structure.Question()
+            for user in self.local_var.room_list[room]:
+                msg = "21 point game start! use {} with +-*/() to creat 21!".format(q.nums)
+                user.conn.sendall(msg)
+
+
