@@ -10,7 +10,6 @@ import thread
 import time
 
 
-
 class Server:
 
     def __init__(self, f='./config'):

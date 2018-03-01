@@ -26,6 +26,7 @@ class Service:
     def __init__(self, f):
         self.file_location = f
         self.local_var = data_structure.Local(self.file_location)
+        self.default_room = self.local_var.room_list.keys()[0]      # 初始化时只有一个房间
 
     def welcome_program(self, conn):
         print ('Connected by', conn.getpeername())
@@ -61,14 +62,13 @@ class Service:
                 return
             elif cmd[0] == 4:
                 self.__chatall(conn, cmd)
-            '''
             elif cmd[0] == 5:
                 # TODO 向房间内除自己外的所有用户发送消息
                 self.__chat_in_room(conn, cmd)
             elif cmd[0] == 6:
                 # TODO 向非自己的一个用户发送消息
                 self.__chat_to(conn, cmd)
-            '''
+
 
     def close_conn(self, conn):
         u = self.local_var.conection[conn]
@@ -97,8 +97,9 @@ class Service:
                 if self.local_var.record_list[account][0] == pwd:
                     if not self.local_var.record_list[account][2]:   # not online yet
                         self.local_var.record_list[account][2] = True
-                        user.sign_in(account)  # 修改登录状态
-                        self.local_var.logged_users['center'].append(user)  # 进入大厅
+                        user.sign_in(account, self.default_room)  # 修改登录状态
+                        self.local_var.logged_users[account] = user
+                        self.local_var.room_list['center'].append(user)  # 进入大厅
                         return "log in successful."
                     else:
                         return "this account is already logged in, please check"
@@ -110,11 +111,12 @@ class Service:
         if user.state is 0:
             return "You haven't logged in yet."
         else:
-            self.local_var.logged_users[user.room].remove(user)     # 退出房间
             a = user.user_account
             t = user.log_out()
+            self.local_var.room_list[user.room].remove(user)     # 退出房间
             self.local_var.record_list[a][1] += t
             self.local_var.record_list[a][2] = False
+            self.local_var.logged_users.pop(a)
             return "logout successful"
 
     def __signup(self, cmd):
@@ -128,14 +130,39 @@ class Service:
             self.local_var.record_list[a] = [p, 0, False]
             return "Signup successfully. You can sign in with it now"
 
-    def __chatall(self, conn, cmd):
+    def __chatall(self, sender_conn, cmd):
         # 向除自己外的所有用户发送消息
         if len(cmd) < 2:
-            conn.sendall("Wrong arguments number. You need to input massage")
+            sender_conn.sendall("Wrong arguments number. You need to input massage")
+            return
         cmd.remove(cmd[0])
-        msg = self.local_var.conection[conn].user_account + ":" + " ".join(cmd)
-        for user_list in self.local_var.logged_users.values():
-            for u in user_list:
-                if u.conn != conn:
-                    u.conn.sendall(msg)
+        sender = self.local_var.conection[sender_conn].user_account
+        msg = sender + "(public):" + " ".join(cmd)
+        for user in self.local_var.logged_users.values():
+            if user.conn != sender_conn:
+                user.conn.sendall(msg)
         return
+
+    def __chat_in_room(self, sender_conn, cmd):
+        if len(cmd) < 2:
+            sender_conn.sendall("Wrong arguments number. You need to input massage")
+            return
+        cmd.remove(cmd[0])
+        sender = self.local_var.conection[sender_conn].user_account
+        msg = sender + "(room):" + " ".join(cmd)
+        room = self.local_var.conection[sender_conn].room
+        for user in self.local_var.room_list[room]:
+            if user.conn != sender_conn:
+                user.conn.sendall(msg)
+
+    def __chat_to(self, sender_conn, cmd):
+        if len(cmd) < 3:
+            return sender_conn.sendall("Wrong arguments number. You need to input massage")
+        receiver = cmd[1]
+        if receiver not in self.local_var.logged_users.keys():
+            return sender_conn.sendall("No such user or the user is not online")
+
+        del cmd[0:2]        # 删除前两个元素
+        sender = self.local_var.conection[sender_conn].user_account
+        msg = sender + "(private):" + " ".join(cmd)
+        self.local_var.logged_users[receiver].conn.sendall(msg)
