@@ -16,7 +16,7 @@ class Local:        # 记录本地database的数据
         self.record_list = {}     # {account, [pwd, livetime, isOnline]} map for checking sign-in
         self.conection = {}  # {sock, User} map to record the state of each connection
         self.logged_users = {}      # {accout, User}
-        self.room_list = {'center': []}  # {roomname, [users]}，其中center表示未进入房间，在广场的用户
+        self.room_list = {'hall': []}  # {roomname, [users]}，其中center表示未进入房间，在广场的用户
 
         self.__read_data()
 
@@ -52,10 +52,18 @@ class User:         # 泛指已建立的各个连接，并非已登录的user
         self.state = 0
         self.user_account = None
         self.room = None
+        livetime = time.time()-self.login_time
         self.login_time = None
-        return time.time()-self.login_time
+        return livetime
 
     def close(self):
         if self.state != 0:
             self.log_out()
 
+    def enter_room(self, roomname):
+        self.state = 2
+        self.room = roomname
+
+    def exit_room(self, default_room):
+        self.state = 1
+        self.room = default_room
