@@ -3,6 +3,7 @@
 对一个连接，有 个状态，保存在User中
 0表示未登录
 1表示已登录
+2表示在房间内
 '''
 import time
 import json
@@ -11,7 +12,10 @@ import json
 class Local:        # 记录本地database的数据
     def __init__(self, f):
         self.__data_location = f    # location of <account,password, livetime> file
-        self.record_list = {}     # <account, [pwd, livetime, isOnline]> map for checking sign-in
+
+        self.record_list = {}     # {account, [pwd, livetime, isOnline]} map for checking sign-in
+        self.conection = {}  # {sock, User} map to record the state of each connection
+        self.logged_users = {'center': []}  # {roomname, [users]}，其中center表示未进入房间，在广场的用户
 
         self.__read_data()
 
@@ -28,13 +32,13 @@ class Local:        # 记录本地database的数据
             raise
 
 
-
-class User:
+class User:         # 泛指已建立的各个连接，并非已登录的user
     def __init__(self, conn):
-        self.conn = conn
         self.user_account = None        # 仅对已登录用户有效
         self.state = 0      # 0 for normal connection, not login
         self.signin_time = None
+        self.room = 'center'
+        self.conn = conn
 
     def sign_in(self, account):
         self.user_account = account
