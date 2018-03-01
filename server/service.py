@@ -19,6 +19,8 @@ class Service:
                 '$chat':    5,
                 '$chatto':  6,
 
+                '$getroom': 11,
+
                 }
 
     local_var = None
@@ -54,7 +56,7 @@ class Service:
                 msg = self.__signup(cmd)
                 conn.sendall(msg)
 
-        elif user.state == 1:           # 已登录
+        elif user.state >= 1:           # 已登录
             # TODO other functions
             if cmd[0] == 3:
                 msg = self.__logout(user)
@@ -66,8 +68,10 @@ class Service:
                 # TODO 向房间内除自己外的所有用户发送消息
                 self.__chat_in_room(conn, cmd)
             elif cmd[0] == 6:
-                # TODO 向非自己的一个用户发送消息
                 self.__chat_to(conn, cmd)
+
+            elif cmd[0] == 11:
+                self.__get_room(conn)
 
 
     def close_conn(self, conn):
@@ -159,10 +163,22 @@ class Service:
         if len(cmd) < 3:
             return sender_conn.sendall("Wrong arguments number. You need to input massage")
         receiver = cmd[1]
+        sender = self.local_var.conection[sender_conn].user_account
+
+        if receiver == sender:
+            return sender_conn.sendall("You cannot send a message to yourself")
         if receiver not in self.local_var.logged_users.keys():
             return sender_conn.sendall("No such user or the user is not online")
 
         del cmd[0:2]        # 删除前两个元素
-        sender = self.local_var.conection[sender_conn].user_account
         msg = sender + "(private):" + " ".join(cmd)
         self.local_var.logged_users[receiver].conn.sendall(msg)
+
+    def __get_room(self, conn):
+        # 回显用户当前所在房间
+        conn.sendall(self.local_var.conection[conn].room)
+
+    def __create_room(self, sender_conn, cmd):
+        if len(cmd) < 2:
+            return sender_conn.sendall("Wrong arguments number. You need to input massage")
+        
