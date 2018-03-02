@@ -44,6 +44,8 @@ class Service:
         conn.sendall(info)
 
     def service_program(self, conn, data):
+        if len(data) == 0:
+            return conn.sendall("Please input command.")
         user = self.local_var.conection[conn]
         # 处理请求
         try:
@@ -281,20 +283,24 @@ class Service:
             return sender_conn.sendall("The game is over or not started yet, please wait.")
 
         question = self.local_var.room_question[user.room]
+        if user in question.proposed_users:
+            return sender_conn.sendall("You have already submit an answer.")
 
         cmd.pop(0)
         expr = "".join(cmd)
         try:
             ans = eval(expr)
-            p = re.compile("\A[+\-*/()]*(\d)[+\-*/()]*(\d)[+\-*/()]*(\d)[+\-*/()]*(\d)[+\-*/()]*")
+            p = re.compile("\A[+\-*/()]*(\d{1,2})[+\-*/()]*(\d{1,2})[+\-*/()]*(\d{1,2})[+\-*/()]*(\d{1,2})[+\-*/()]*\Z")
             m = re.match(p, expr)
             if not m:
                 return sender_conn.sendall("Something wrong with your expression. Please check.")
             numbers = [int(i) for i in m.groups()]
-            if numbers.sort() != question.nums.sort():
+            numbers.sort()
+            if numbers != question.nums:
                 return sender_conn.sendall("Numbers are different from that in that question.")
             # 有效提交
             question.proposed_users.append(user)
+            sender_conn.sendall("Submit answer successfully. Please wait.")
             if ans == 21:
                 question.right_ans = expr
                 question.max = 21
@@ -329,6 +335,9 @@ class Service:
             self.__pub_result(room)
 
     def send_question(self):
+        if self.local_var.room_question != {}:      # 上一场21点游戏尚未结束
+            print('Cannot start game as last turn of game is carrying on')
+            return False
         for room in self.local_var.room_list.keys():
             if room == self.default_room:       # 大厅不参与游戏
                 continue
@@ -336,5 +345,5 @@ class Service:
             for user in self.local_var.room_list[room]:
                 msg = "21 point game start! use {} with +-*/() to creat 21!".format(q.nums)
                 user.conn.sendall(msg)
-
+        return True
 

@@ -1,5 +1,5 @@
 [server]
-port = 10000
+port = 10001
 host = ""
 backlog = 1
 database_location = database

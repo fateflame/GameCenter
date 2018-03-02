@@ -28,7 +28,7 @@ class Server:
         # 服务器连接管理变量
         self.service = service.Service(self.__database_location)
 
-        self.ser_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.ser_sock = data_structure.Protocol(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
         self.ser_sock.bind((self.__host, self.__port))
 
         self._build_local_sock()
@@ -38,8 +38,8 @@ class Server:
 
     def _build_local_sock(self):
         # 建立一对连接用以子线程与主线程之间通信
-        local_sock_ser = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.local_sock_sub = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        local_sock_ser = data_structure.Protocol(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM))
+        self.local_sock_sub = data_structure.Protocol(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM))
         if os.path.exists(self.pipe_file):
             os.unlink(self.pipe_file)
         local_sock_ser.bind(self.pipe_file)
@@ -49,11 +49,16 @@ class Server:
         local_sock_ser.close()  # 关闭监听套接字
 
     def run(self):
-        t = threading.Thread(target=self.server_ctrl, args=[])
         # 启动一个线程控制服务器，遇到exit，则中断主线程
-        t.start()
+        t_ctrl = threading.Thread(target=self.server_ctrl, args=[])
+        # 一个线程来控制游戏
+        t_game = threading.Thread(target=self.daemon_thread, args=[])
+        t_game.setDaemon(threading.Thread.daemon)   # 设为守护线程随主进程一起自动关闭
+
+        t_ctrl.start()
+        t_game.start()
         self.listen()
-        t.join()
+        t_ctrl.join()
 
     def listen(self):
         self.ser_sock.listen(self.__backlog)
@@ -71,8 +76,10 @@ class Server:
                 if data == "exit":
                     break
                 elif data == 'game':
-                    # TODO: 给各个房间发送题目
-                    self.service.send_question()
+                    if self.service.send_question():
+                        self.local_sock_main.sendall("true")
+                    else:
+                        self.local_sock_main.sendall("false")
                 elif data == 'gameover':
                     # TODO 发布游戏结果
                     self.service.pub_result()
@@ -86,14 +93,14 @@ class Server:
                     continue
             for conn in r:              # 已连接套接字
                 if self.service.local_var.conection.has_key(conn):
-                    data = conn.recv(1024)
-                    if len(data) == 0:
+                    try:
+                        data = conn.recv(1024)
+                        if len(data) >= 0:
+                            self.service.service_program(conn, data)
+                    except EOFError:
                         print "close a client"
-                        # TODO 退出用户，从各列表中删除对应连接还用户，关闭连接
-                        self.service.close_conn(conn)        # remove close connection
-                    elif len(data) > 0:
-                        # TODO provide service here
-                        self.service.service_program(conn, data)
+                        self.service.close_conn(conn)  # remove close connection
+
                     nready -= 1
                     if nready <= 0:
                         break
@@ -131,30 +138,39 @@ class Server:
             else:
                 print("Invalid cmd, return")
 
-    def game21(self):       # 调整第一次game的时间
-        self._game21()
-        interval = 3600
-        threading.Timer(interval, self.game21, ())           # 准备下次
+    def daemon_thread(self):
+        approach_time(min=21, sec=0)
+        self.game21(game_time=300)
 
-    def _game21(self):
+    def game21(self, interval=3600, game_time=60):
+        # precondition: 调用该函数的时间是每小时的半点
+        # 之后每隔interval秒后调用本函数
+        threading.Timer(interval, self.game21, [interval, game_time]).start()           # 准备下次
+        self._game21(game_time)
+
+    def _game21(self, game_time):
         self.local_sock_sub.sendall("game")
-        time.sleep(90)
-        self.local_sock_sub.sendall("gameover")
+        time.sleep(game_time)
+        ret = self.local_sock_sub.recv(1024)    # 检查游戏是否发布成功
+        if ret == 'true':
+            self.local_sock_sub.sendall("gameover")
 
 
-def approach_half_hour():
+def approach_time(min=30, sec=0):
+    # 直到离当前时刻最近的下一个min分sec秒后返回
     t0 = datetime.datetime.now()
-    t1 = datetime.datetime(t0.year, t0.month, t0.day, t0.hour, 30, 0)
+    t1 = datetime.datetime(t0.year, t0.month, t0.day, t0.hour, min, sec)
     if t1 < t0:
-        t1 = datetime.datetime(t0.year, t0.month, t0.day, t0.hour + 1, 30, 0)
+        t1 = datetime.datetime(t0.year, t0.month, t0.day, t0.hour + 1, min, sec)
     while True:
-        delta = (t1 - t0)
-        if delta.total_seconds() > 10:
+        delta = (t1 - t0).total_seconds()
+        if delta > 10:
             time.sleep(3/4*delta)       # 渐进
         else:
             time.sleep(delta)
             return
         t0 = datetime.datetime.now()
+
 
 
 if __name__ == "__main__":

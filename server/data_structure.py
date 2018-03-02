@@ -8,7 +8,7 @@
 import time
 import json
 import random
-
+import socket
 
 class Local:        # 记录本地database的数据
     def __init__(self, f):
@@ -38,6 +38,7 @@ class Local:        # 记录本地database的数据
 class Question:
     def __init__(self):
         self.nums = [random.randint(1,10) for i in range(4)]
+        self.nums.sort()
         self.winner = None
         self.max = None
         self.proposed_users = []        # 以第一次提交为准，记录下提交过结果的用户
@@ -78,3 +79,69 @@ class User:         # 泛指已建立的各个连接，并非已登录的user
     def exit_room(self, default_room):
         self.state = 1
         self.room = default_room
+
+
+class Protocol:
+    # 套接字包装类，重新recv和sendall函数以加上包头
+    header_len = 4
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def bind(self, address):
+        return self.conn.bind(address)
+
+    def connect(self, address):
+        return self.conn.connect(address)
+
+    def listen(self, backlog):
+        return self.conn.listen(backlog)
+
+    def accept(self):
+        conn, addr = self.conn.accept()
+        return Protocol(conn), addr
+
+    def close(self):
+        return self.conn.close()
+
+    def recv(self, buf_size):
+        try:
+            header = self.conn.recv(self.header_len)
+            if header == '':
+                raise EOFError("Receive a eof from {}".format(self.getpeername()))
+            elif header == '0000':
+                return ''
+            while len(header) < self.header_len:
+                header += self.conn.recv(self.header_len-len(header))
+            length = self.__parse_header(header)
+            data = ""
+            while length > buf_size:
+                data += self.conn.recv(buf_size)
+                length -= buf_size
+            data += self.conn.recv(length)
+            return data
+        except ValueError:
+            raise           # 可考虑强制关闭连接
+
+    def __parse_header(self, header):
+        try:
+            header_length = int(header)
+            if header_length < 0:
+                raise ValueError('Unexpected negative length of data')
+            return header_length
+        except ValueError:
+            raise             # 解析头部长度错误
+
+    def sendall(self, msg):
+        data_len = len(msg)
+
+        if data_len > 9999:
+            raise OverflowError("Cannot send a message more than 9999 words!")
+        msg = '{:0>4}'.format(data_len) + msg
+        self.conn.sendall(msg)
+
+    def fileno(self):
+        return self.conn.fileno()
+
+    def getpeername(self):
+        return self.conn.getpeername()
